@@ -1,3 +1,4 @@
+import asyncio
 from asyncio import run
 from threading import Event, Thread
 from time import sleep
@@ -48,6 +49,8 @@ from .main_complete import TikTok
 
 __all__ = ["TikTokDownloader"]
 
+from ..downloader.sharp import acquire_redis_session, RedisPubSub
+
 
 def server_tip(function):
     async def inner(self, *args, **kwargs):
@@ -86,6 +89,9 @@ class TikTokDownloader:
         self.config = None
         self.option = None
         self.__function_menu = None
+        self._task = None
+        self._stop_event = asyncio.Event()
+        self.pubsub = None
 
     async def read_config(self):
         self.config = self.__format_config(await self.database.read_config_data())
@@ -429,6 +435,81 @@ class TikTokDownloader:
         )
         if await self.disclaimer():
             await self.main_menu(safe_pop(self.run_command))
+
+    async def set_cookie(self):
+        channel = "TIKTOK_SET_COOKIE"
+        async with acquire_redis_session() as redis_session:
+            self.pubsub = RedisPubSub(redis_session)
+
+            async def handle_message(channel: str, message: str):
+                print(f"Received message on channel {channel}: {message}")
+                self.cookie.extract(message)
+
+            self._task = asyncio.create_task(
+                self.pubsub.subscribe(channel, handle_message)
+            )
+
+            await self._stop_event.wait()  # 等待停止信号
+
+            # 清理
+            await self.pubsub.unsubscribe(channel)
+            await self.pubsub.close()
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+
+    async def account_detail_inquire(self):
+        channel = "TIKTOK_ACCOUNT_DETAIL_INQUIRE"
+        example = TikTok(
+            self.parameter,
+            self.database,
+        )
+        async with acquire_redis_session() as redis_session:
+            self.pubsub = RedisPubSub(redis_session)
+
+            async def handle_message(channel: str, message: str):
+                print(f"Received message on channel {channel}: {message}")
+                try:
+                    await example.account_detail_inquire_sharp(url=message)
+                    self.running = example.running
+                except KeyboardInterrupt:
+                    self.running = False
+
+            self._task = asyncio.create_task(
+                self.pubsub.subscribe(channel, handle_message)
+            )
+
+            await self._stop_event.wait()  # 等待停止信号
+
+            # 清理
+            await self.pubsub.unsubscribe(channel)
+            await self.pubsub.close()
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+
+    async def run_set_cookie(self):
+        # cookie-name:odin_tt
+        self.project_info()
+        self.check_config()
+        await self.check_settings(
+            False,
+        )
+        if await self.disclaimer():
+            await self.set_cookie()
+
+    async def run_account_detail_inquire(self):
+        self.project_info()
+        self.check_config()
+        await self.check_settings(
+            False,
+        )
+        if await self.disclaimer():
+            await self.account_detail_inquire()
 
     def periodic_update_params(self):
         async def inner():

@@ -26,3 +26,7 @@ rookiepy==0.5.6
     # via tiktokdownloader (pyproject.toml)
 uvicorn==0.34.0
     # via tiktokdownloader (pyproject.toml)
+redis==5.2.1
+pydantic-settings==2.8.1
+yarl==1.18.3
+

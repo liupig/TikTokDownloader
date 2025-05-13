@@ -424,7 +424,7 @@ class TikTok:
         self,
         *args,
     ):
-        while url := self._inquire_input(_("账号主页")):
+        while url := self._inquire_input(_("账号主页111")):
             links = await self.links.run(url, "user")
             if not links:
                 self.logger.warning(
@@ -436,6 +436,24 @@ class TikTok:
                 False,
                 *args,
             )
+
+    async def account_detail_inquire_sharp(
+        self,
+            url,
+        *args,
+    ):
+        links = await self.links.run(url, "user")
+        if not links:
+            self.logger.warning(
+                _("{url} 提取账号 sec_user_id 失败").format(url=url)
+            )
+            return
+        print("账号主页 links", links, args)
+        await self.__account_detail_handle(
+            links,
+            False,
+            *args,
+        )
 
     async def account_detail_inquire_tiktok(
         self,

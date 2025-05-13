@@ -5,7 +5,7 @@ from fastapi.responses import RedirectResponse
 from uvicorn import Config, Server
 from textwrap import dedent
 
-from models import DetailTikTok
+from src.models import DetailTikTok
 from ..custom import (
     __VERSION__,
     REPOSITORY,

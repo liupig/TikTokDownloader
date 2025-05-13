@@ -23,6 +23,7 @@ from rich.progress import (
     TransferSpeedColumn,
 )
 
+from .sharp import send_to_tos
 from ..custom import DESCRIPTION_LENGTH
 from ..custom import MAX_FILENAME_LENGTH
 from ..custom import MAX_WORKERS
@@ -694,8 +695,9 @@ class Downloader:
             await self.recorder.delete_id(id_)
             return False
         self.save_file(cache, actual)
-        self.log.info(_("{show} 文件下载成功").format(show=show))
-        self.log.info(f"文件路径 {actual.resolve()}", False)
+        self.log.info(_("{show} 文件下载成功----").format(show=show))
+        self.log.info(f"文件路径-- {actual.resolve()}", False)
+
         await self.recorder.update_id(id_)
         self.add_count(show, id_, count)
         return True
@@ -809,12 +811,14 @@ class Downloader:
     @staticmethod
     def save_file(cache: Path, actual: Path):
         move(cache.resolve(), actual.resolve())
+        send_to_tos(str(actual.resolve()))
 
     def delete_file(self, path: Path):
         path.unlink()
         self.log.info(_("{file_name} 文件已删除").format(file_name=path.name))
 
     def statistics_count(self, count: SimpleNamespace):
+        print("count result", count)
         self.log.info(
             _("下载视频作品 {downloaded_video_count} 个").format(
                 downloaded_video_count=len(count.downloaded_video)
