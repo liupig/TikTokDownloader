@@ -499,8 +499,7 @@ class TikTokDownloader:
         await self.check_settings(
             False,
         )
-        if await self.disclaimer():
-            await self.set_cookie()
+        await self.set_cookie()
 
     async def run_account_detail_inquire(self):
         self.project_info()
@@ -508,8 +507,7 @@ class TikTokDownloader:
         await self.check_settings(
             False,
         )
-        if await self.disclaimer():
-            await self.account_detail_inquire()
+        await self.account_detail_inquire()
 
     def periodic_update_params(self):
         async def inner():

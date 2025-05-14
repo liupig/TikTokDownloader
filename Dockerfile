@@ -10,6 +10,7 @@ COPY static /TikTokDownloader/static
 COPY templates /TikTokDownloader/templates
 COPY license /TikTokDownloader/license
 COPY main.py /TikTokDownloader/main.py
+COPY MyTikTokDownloads /TikTokDownloader/MyTikTokDownloads
 COPY requirements.txt /TikTokDownloader/requirements.txt
 
 RUN pip install --no-cache-dir -r /TikTokDownloader/requirements.txt

@@ -1,4 +1,8 @@
 # -*- coding=utf-8
+import json
+import time
+import uuid
+import requests
 import asyncio
 from contextlib import asynccontextmanager
 from typing import Optional, AsyncContextManager, Any, Callable, Awaitable
@@ -10,27 +14,27 @@ from pydantic_settings import BaseSettings
 import sys
 import os
 import logging
+from moviepy import VideoFileClip
 
 # 正常情况日志级别使用 INFO，需要定位时可以修改为 DEBUG，此时 SDK 会打印和服务端的通信信息
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
-# 1. 设置用户属性, 包括 secret_id, secret_key, region等。Appid 已在 CosConfig 中移除，请在参数 Bucket 中带上 Appid。Bucket 由 BucketName-Appid 组成
-secret_id = "" # os.environ['COS_SECRET_ID']     # 用户的 SecretId，建议使用子账号密钥，授权遵循最小权限指引，降低使用风险。子账号密钥获取可参见 https://cloud.tencent.com/document/product/598/37140
-secret_key = "" #os.environ['COS_SECRET_KEY']   # 用户的 SecretKey，建议使用子账号密钥，授权遵循最小权限指引，降低使用风险。子账号密钥获取可参见 https://cloud.tencent.com/document/product/598/37140
-region = 'ap-beijing'      # 替换为用户的 region，已创建桶归属的 region 可以在控制台查看，https://console.cloud.tencent.com/cos5/bucket
-                           # COS 支持的所有 region 列表参见 https://cloud.tencent.com/document/product/436/6224
-token = None               # 如果使用永久密钥不需要填入 token，如果使用临时密钥需要填入，临时密钥生成和使用指引参见 https://cloud.tencent.com/document/product/436/14048
-scheme = 'https'           # 指定使用 http/https 协议来访问 COS，默认为 https，可不填
-
-config = CosConfig(Region=region, SecretId=secret_id, SecretKey=secret_key, Token=token, Scheme=scheme)
-client = CosS3Client(config)
 
 class Settings(BaseSettings):
-    redis_host: str = ""
+    redis_host: str = "10.0.0.0"
     redis_port: int = 6379
     redis_user: Optional[str] = ""
-    redis_pass: Optional[str] = r""
+    redis_pass: Optional[str] = r"xxx"
     redis_base: Optional[int] = 10
+
+    # TOS
+    tencent_secret_id: str = "1"
+    tencent_secret_key: str = "1"
+    tiktok_bucket: str = '1'
+
+    # ASR
+    asr_appid: str = '1'
+    asr_token: str = '1'
 
     @property
     def redis_url(self) -> URL:
@@ -51,11 +55,13 @@ class Settings(BaseSettings):
             path=path,
         )
 
+
 settings = Settings()
 redis_pool = ConnectionPool.from_url(
     str(settings.redis_url),
     decode_responses=True
 )
+
 
 @asynccontextmanager
 async def acquire_redis_session() -> AsyncContextManager[Redis]:
@@ -64,24 +70,200 @@ async def acquire_redis_session() -> AsyncContextManager[Redis]:
         yield redis
 
 
-def send_to_tos(file_name):
-    try:
-        # file_name = r'D:\MyTikTokDownloads\UID4160968570706796_奶呼呼_发布作品\2025-04-21 12.00.21-视频-奶呼呼-#元气少女 #甜妹 #笑起来很甜#企鹅防晒衣 #企鹅光合防晒衣.mp4'
-        file_name = str(file_name).replace("\\", "/")
-        key_name = "tiktok_china/"+file_name.split("MyTikTokDownloads")[-1].strip(r"\\/")
+class AsrTask(object):
+    def submit_task(self, file_url):
+        submit_url = "https://openspeech.bytedance.com/api/v3/auc/bigmodel/submit"
+
+        task_id = str(uuid.uuid4())
+
+        headers = {
+            "X-Api-App-Key": settings.asr_appid,
+            "X-Api-Access-Key": settings.asr_token,
+            "X-Api-Resource-Id": "volc.bigasr.auc",
+            "X-Api-Request-Id": task_id,
+            "X-Api-Sequence": "-1"
+        }
+
+        request = {
+            "user": {
+                "uid": "fake_uid"
+            },
+            "audio": {
+                "url": file_url,
+                "format": "mp3",
+                "codec": "raw",
+                "rate": 16000,
+                "bits": 16,
+                "channel": 1
+            },
+            "request": {
+                "model_name": "bigmodel",
+                # "enable_itn": True,
+                # "enable_punc": True,
+                # "enable_ddc": True,
+                "show_utterances": True,
+                # "enable_channel_split": True,
+                # "vad_segment": True,
+                "enable_speaker_info": True,
+                "corpus": {
+                    # "boosting_table_name": "test",
+                    "correct_table_name": "",
+                    "context": ""
+                }
+            }
+        }
+        print(f'Submit task id: {task_id}')
+        response = requests.post(submit_url, data=json.dumps(request), headers=headers)
+        if 'X-Api-Status-Code' in response.headers and response.headers["X-Api-Status-Code"] == "20000000":
+            print(f'Submit task response header X-Api-Status-Code: {response.headers["X-Api-Status-Code"]}')
+            print(f'Submit task response header X-Api-Message: {response.headers["X-Api-Message"]}')
+            x_tt_logid = response.headers.get("X-Tt-Logid", "")
+            print(f'Submit task response header X-Tt-Logid: {response.headers["X-Tt-Logid"]}\n')
+            return task_id, x_tt_logid
+        else:
+            print(f'Submit task failed and the response headers are: {response.headers}')
+
+        return task_id
+
+    def query_task(self, task_id, x_tt_logid):
+        query_url = "https://openspeech.bytedance.com/api/v3/auc/bigmodel/query"
+
+        headers = {
+            "X-Api-App-Key": settings.asr_appid,
+            "X-Api-Access-Key": settings.asr_token,
+            "X-Api-Resource-Id": "volc.bigasr.auc",
+            "X-Api-Request-Id": task_id,
+            "X-Tt-Logid": x_tt_logid  # 固定传递 x-tt-logid
+        }
+
+        response = requests.post(query_url, json.dumps({}), headers=headers)
+
+        if 'X-Api-Status-Code' in response.headers:
+            print(f'Query task response header X-Api-Status-Code: {response.headers["X-Api-Status-Code"]}')
+            print(f'Query task response header X-Api-Message: {response.headers["X-Api-Message"]}')
+            print(f'Query task response header X-Tt-Logid: {response.headers["X-Tt-Logid"]}\n')
+        else:
+            print(f'Query task failed and the response headers are: {response.headers}')
+            return
+        return response
+
+    def run_asr_task(self, file_url, asr_file_name):
+        task_id, x_tt_logid = self.submit_task(file_url)
+        while True:
+            try:
+                query_response = self.query_task(task_id, x_tt_logid)
+                code = query_response.headers.get('X-Api-Status-Code', "")
+                if code == '20000000':
+                    print("SUCCESS!")
+                    return query_response.json()
+                elif code != '20000001' and code != '20000002':  # task failed
+                    print("FAILED!")
+                    break
+                time.sleep(1)
+            except Exception as e:
+                print(e)
+                break
+
+    def extract_audio_from_video(self, video_path, audio_path):
+        """
+        从视频文件中提取音频并保存为 MP3。
+
+        参数:
+        video_path (str): 输入的 MP4 视频文件路径。
+        audio_path (str): 输出的 MP3 音频文件路径。
+        """
+        try:
+            # 载入视频文件
+            video_clip = VideoFileClip(video_path)
+
+            # 提取音频部分
+            audio_clip = video_clip.audio
+
+            # 将音频写入 MP3 文件
+            # 可以指定比特率，例如 bitrate="192k"
+            # codec="libmp3lame" 是常用的 MP3 编码器
+            audio_clip.write_audiofile(audio_path, codec="libmp3lame")
+
+            # 关闭剪辑以释放资源
+            audio_clip.close()
+            video_clip.close()
+
+            print(f"音频已成功提取并保存到: {audio_path}")
+            return True
+        except Exception as e:
+            print(f"提取音频时发生错误: {e}")
+            return False
+
+
+class CloudTos(object):
+    region = 'ap-beijing'
+    scheme = 'https'
+    token = None
+
+    def __init__(self, bucket):
+        self.config = self.init_config()
+        self.client = CosS3Client(self.config)
+        self.bucket = bucket
+
+    def init_config(self):
+        self.config = CosConfig(Region=self.region, SecretId=settings.tencent_secret_id,
+                                SecretKey=settings.tencent_secret_key, Token=self.token, Scheme=self.scheme)
+        return self.config
+
+    def save_local_file(self, file_name, key_name):
         with open(file_name, 'rb') as fp:
-            response = client.put_object(
-                # Bucket='musex-ai-1329532616',  # Bucket 由 BucketName-APPID 组成
-                Bucket='musex-ai-public-1329532616',  # Bucket 由 BucketName-APPID 组成
+            response = self.client.put_object(
+                Bucket=self.bucket,  # Bucket 由 BucketName-APPID 组成
                 Body=fp,
                 Key=key_name,
                 StorageClass='STANDARD',
-                # ContentType='text/html; charset=utf-8'
             )
             print(response['ETag'])
-    except Exception as e:
-        print("error", file_name)
-        print(e)
+
+    def save_content(self, content, key_name):
+        response = self.client.put_object(
+            Bucket='musex-ai-public-1329532616',  # Bucket 由 BucketName-APPID 组成
+            # Body=json.dumps(query_response.json(), ensure_ascii=False, indent=4),
+            Body=content,
+            Key=key_name,
+            StorageClass='STANDARD',
+            # ContentType='text/html; charset=utf-8'
+        )
+
+    def get_object_url(self, key_name):
+        return self.client.get_object_url(
+            Bucket=self.bucket,
+            Key=key_name
+        )
+
+    def send_to_tos(self, file_name):
+        try:
+            # file_name = r'D:\MyTikTokDownloads\UID4160968570706796_奶呼呼_发布作品\2025-04-21 12.00.21-视频-奶呼呼-#元气少女 #甜妹 #笑起来很甜#企鹅防晒衣 #企鹅光合防晒衣.mp4'
+            file_name = str(file_name).replace("\\", "/")
+            if "MyTikTokDownloads" in file_name:
+                split_flag = "MyTikTokDownloads"
+            else:
+                split_flag = "TikTokDownloader"
+            key_name = "tiktok_china/tiktok_china_video/" + file_name.split(split_flag)[-1].strip(r"\\/")
+
+            self.save_local_file(file_name, key_name)
+
+            if "mp4" in file_name:
+                audio_file_name = file_name.replace("mp4", "mp3")
+                asr_task.extract_audio_from_video(file_name, audio_file_name)
+                key_name = "tiktok_china/tiktok_china_audio/" + audio_file_name.split(split_flag)[-1].strip(r"\\/")
+                self.save_local_file(file_name, key_name)
+
+                url = self.get_object_url(key_name)
+
+                asr_file_name = file_name.replace("mp4", "json")
+                key_name = "tiktok_china/tiktok_china_asr/" + asr_file_name.split(split_flag)[-1].strip(r"\\/")
+                asr_result = asr_task.run_asr_task(url, key_name)
+                if asr_result:
+                    self.save_content(json.dumps(asr_result, ensure_ascii=False, indent=4), key_name)
+        except Exception as e:
+            print("error", file_name)
+            print(e)
 
 
 class RedisPubSub:
@@ -130,30 +312,5 @@ class RedisPubSub:
             await self.pubsub.aclose()
 
 
-# 使用示例
-async def main():
-    async with acquire_redis_session() as redis_session:
-        pubsub = RedisPubSub(redis_session)
-
-        # 定义消息处理回调
-        async def handle_message(channel: str, message: str):
-            print(f"Received message on channel {channel}: {message}")
-
-        # 启动订阅任务
-        subscribe_task = asyncio.create_task(pubsub.subscribe("my_channel", handle_message))
-
-        # 发布一些消息
-        await pubsub.publish("my_channel", "Hello, Redis!")
-        await pubsub.publish("my_channel", "Another message")
-
-        # 等待一会儿让消息被处理
-        await asyncio.sleep(1)
-
-        # 取消订阅并关闭
-        await pubsub.unsubscribe("my_channel")
-        await pubsub.close()
-        # subscribe_task.cancel()
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+asr_task = AsrTask()
+cloud_tos = CloudTos(settings.tiktok_bucket)

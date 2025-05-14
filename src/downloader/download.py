@@ -23,7 +23,7 @@ from rich.progress import (
     TransferSpeedColumn,
 )
 
-from .sharp import send_to_tos
+from .sharp import cloud_tos
 from ..custom import DESCRIPTION_LENGTH
 from ..custom import MAX_FILENAME_LENGTH
 from ..custom import MAX_WORKERS
@@ -811,7 +811,7 @@ class Downloader:
     @staticmethod
     def save_file(cache: Path, actual: Path):
         move(cache.resolve(), actual.resolve())
-        send_to_tos(str(actual.resolve()))
+        cloud_tos.send_to_tos(str(actual.resolve()))
 
     def delete_file(self, path: Path):
         path.unlink()
