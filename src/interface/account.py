@@ -256,7 +256,9 @@ class Account(API):
                 self.cursor = data_dict[cursor]
                 self.append_response(d)
                 self.finished = not data_dict[has_more]
-        except KeyError:
+        # except KeyError:
+        except Exception as e:
+            self.log.error(f"check_response: {e}")
             if data_dict.get("status_code") == 0:
                 self.log.warning(_("配置文件 cookie 参数未登录，数据获取已提前结束"))
             else:

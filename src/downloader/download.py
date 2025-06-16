@@ -131,6 +131,7 @@ class Downloader:
         data: Union[list[dict], list[tuple]],
         type_: str,
         tiktok=False,
+        sharp_metadata={},
         **kwargs,
     ) -> None:
         if not self.download or not data:
@@ -138,9 +139,9 @@ class Downloader:
         self.log.info(_("开始下载作品文件"))
         match type_:
             case "batch":
-                await self.run_batch(data, tiktok, **kwargs)
+                await self.run_batch(data, tiktok, sharp_metadata=sharp_metadata, **kwargs)
             case "detail":
-                await self.run_general(data, tiktok, **kwargs)
+                await self.run_general(data, tiktok,sharp_metadata=sharp_metadata, **kwargs)
             case "music":
                 await self.run_music(data, **kwargs)
             case "live":
@@ -160,6 +161,7 @@ class Downloader:
         mix_title: str = "",
         collect_id: str = "",
         collect_name: str = "",
+        sharp_metadata= {},
     ):
         root = self.storage_folder(
             mode,
@@ -178,19 +180,22 @@ class Downloader:
             data,
             root,
             tiktok=tiktok,
+            sharp_metadata=sharp_metadata,
         )
 
-    async def run_general(self, data: list[dict], tiktok: bool, **kwargs):
+    async def run_general(self, data: list[dict], tiktok: bool,sharp_metadata={}, **kwargs):
         root = self.storage_folder(mode="detail")
         await self.batch_processing(
             data,
             root,
             tiktok=tiktok,
+            sharp_metadata=sharp_metadata
         )
 
     async def run_music(
         self,
         data: list[dict],
+        sharp_metadata={},
         **kwargs,
     ):
         root = self.root.joinpath("Music")
@@ -214,7 +219,7 @@ class Downloader:
                 type_=_("音乐"),
             )
         await self.downloader_chart(
-            tasks, SimpleNamespace(), self.__general_progress_object(), **kwargs
+            tasks, SimpleNamespace(), self.__general_progress_object(),sharp_metadata=sharp_metadata, **kwargs
         )
 
     async def run_live(
@@ -267,7 +272,7 @@ class Downloader:
             self.headers["User-Agent"],
         )
 
-    async def batch_processing(self, data: list[dict], root: Path, **kwargs):
+    async def batch_processing(self, data: list[dict], root: Path,sharp_metadata={}, **kwargs):
         count = SimpleNamespace(
             downloaded_image=set(),
             skipped_image=set(),
@@ -320,7 +325,7 @@ class Downloader:
             )
             self.download_cover(**params)
         await self.downloader_chart(
-            tasks, count, self.__general_progress_object(), **kwargs
+            tasks, count, self.__general_progress_object(),sharp_metadata=sharp_metadata, **kwargs
         )
         self.statistics_count(count)
 
@@ -330,6 +335,7 @@ class Downloader:
         count: SimpleNamespace,
         progress: Progress,
         semaphore: Semaphore = None,
+        sharp_metadata={},
         **kwargs,
     ):
         with progress:
@@ -340,6 +346,7 @@ class Downloader:
                     **kwargs,
                     progress=progress,
                     semaphore=semaphore,
+                    sharp_metadata=sharp_metadata
                 )
                 for task in tasks
             ]
@@ -571,6 +578,7 @@ class Downloader:
         tiktok=False,
         unknown_size=False,
         semaphore: Semaphore = None,
+        sharp_metadata = {}
     ) -> bool | None:
         async with semaphore or self.semaphore:
             client = self.client_tiktok if tiktok else self.client
@@ -628,6 +636,7 @@ class Downloader:
                                 position,
                                 count,
                                 progress,
+                                sharp_metadata
                             )
                         case 0:
                             return True
@@ -671,6 +680,7 @@ class Downloader:
         position: int,
         count: SimpleNamespace,
         progress: Progress,
+        sharp_metadata = {}
     ) -> bool:
         task_id = progress.add_task(
             beautify_string(show, self.truncate),
@@ -694,7 +704,7 @@ class Downloader:
             # self.delete_file(cache)
             await self.recorder.delete_id(id_)
             return False
-        self.save_file(cache, actual)
+        self.save_file(cache, actual, sharp_metadata)
         self.log.info(_("{show} 文件下载成功----").format(show=show))
         self.log.info(f"文件路径-- {actual.resolve()}", False)
 
@@ -809,9 +819,9 @@ class Downloader:
             temp.unlink()
 
     @staticmethod
-    def save_file(cache: Path, actual: Path):
+    def save_file(cache: Path, actual: Path, sharp_metadata={}):
         move(cache.resolve(), actual.resolve())
-        cloud_tos.send_to_tos(str(actual.resolve()))
+        cloud_tos.send_to_tos(str(actual.resolve()), sharp_metadata)
 
     def delete_file(self, path: Path):
         path.unlink()

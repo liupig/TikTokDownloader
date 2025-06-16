@@ -228,23 +228,23 @@ class TikTok:
             (_("从文本文档读取待采集的账号链接"), self.user_txt),
         )
         self.__function_detail = (
-            (_("手动输入待采集的作品链接"), self.__detail_inquire),
+            (_("手动输入待采集的作品链接1"), self.__detail_inquire),
             (_("从文本文档读取待采集的作品链接"), self.__detail_txt),
         )
         self.__function_detail_tiktok = (
-            (_("手动输入待采集的作品链接"), self.__detail_inquire_tiktok),
+            (_("手动输入待采集的作品链接2"), self.__detail_inquire_tiktok),
             (_("从文本文档读取待采集的作品链接"), self.__detail_txt_tiktok),
         )
         self.__function_detail_tiktok_unofficial = (
-            (_("手动输入待采集的作品链接"), self.__detail_inquire_tiktok_unofficial),
+            (_("手动输入待采集的作品链接3"), self.__detail_inquire_tiktok_unofficial),
             (_("从文本文档读取待采集的作品链接"), self.__detail_txt_tiktok_unofficial),
         )
         self.__function_comment = (
-            (_("手动输入待采集的作品链接"), self.__comment_inquire),
+            (_("手动输入待采集的作品链接4"), self.__comment_inquire),
             (_("从文本文档读取待采集的作品链接"), self.__comment_txt),
         )
         self.__function_comment_tiktok = (
-            (_("手动输入待采集的作品链接"), self.__comment_inquire_tiktok),
+            (_("手动输入待采集的作品链接5"), self.__comment_inquire_tiktok),
             # (_("从文本文档读取待采集的作品链接"), self.__comment_txt_tiktok),
         )
         self.__function_search = (
@@ -440,6 +440,7 @@ class TikTok:
     async def account_detail_inquire_sharp(
         self,
             url,
+            sharp_metadata={},
         *args,
     ):
         links = await self.links.run(url, "user")
@@ -452,6 +453,7 @@ class TikTok:
         await self.__account_detail_handle(
             links,
             False,
+            sharp_metadata=sharp_metadata,
             *args,
         )
 
@@ -524,6 +526,7 @@ class TikTok:
         self,
         links: list[str],
         tiktok=False,
+        sharp_metadata= {},
         *args,
         **kwargs,
     ):
@@ -533,6 +536,7 @@ class TikTok:
                 index,
                 sec_user_id=sec,
                 tiktok=tiktok,
+                sharp_metadata=sharp_metadata,
                 *args,
                 **kwargs,
             ):
@@ -560,6 +564,7 @@ class TikTok:
         cookie: str = None,
         proxy: str = None,
         tiktok=False,
+        sharp_metadata= {},
         *args,
         **kwargs,
     ):
@@ -615,6 +620,7 @@ class TikTok:
             tiktok=tiktok,
             mode=tab,
             info=info,
+            sharp_metadata=sharp_metadata
         )
 
     async def _get_account_data(
@@ -729,6 +735,7 @@ class TikTok:
         mix_title: str = "",
         collect_id: str = "",
         collect_name: str = "",
+        sharp_metadata= {}
     ):
         self.logger.info(_("开始提取作品数据"))
         id_, name, mark = self.extractor.preprocessing_data(
@@ -799,6 +806,7 @@ class TikTok:
             mix_title=mix_title,
             collect_id=collect_id,
             collect_name=collect_name,
+            sharp_metadata=sharp_metadata
         )
         return True
 
@@ -861,6 +869,7 @@ class TikTok:
         mix_title: str = "",
         collect_id: str = "",
         collect_name: str = "",
+        sharp_metadata={},
     ):
         await self.downloader.run(
             data,
@@ -874,6 +883,7 @@ class TikTok:
             mix_title=mix_title,
             collect_id=collect_id,
             collect_name=collect_name,
+            sharp_metadata=sharp_metadata,
         )
 
     async def detail_interactive(
@@ -941,13 +951,38 @@ class TikTok:
                     self.logger.warning(_("{url} 提取作品 ID 失败").format(url=url))
                     continue
                 self.console.print(
-                    _("共提取到 {count} 个作品，开始处理！").format(count=len(ids))
+                    _("共提取到2222 {count} 个作品，开始处理！").format(count=len(ids))
                 )
                 await self._handle_detail(
                     ids,
                     tiktok,
                     record,
                 )
+
+
+    async def detail_inquire_sharp(
+        self,
+        url,
+        tiktok=False,
+        sharp_metadata={},
+    ):
+        root, params, logger = self.record.run(self.parameter)
+        link_obj = self.links_tiktok if tiktok else self.links
+        async with logger(root, console=self.console, **params) as record:
+            ids = await link_obj.run(url)
+            if not any(ids):
+                self.logger.warning(_("{url} 提取作品 ID 失败").format(url=url))
+                return
+            self.console.print(
+                _("共提取到 {count} 个作品，开始处理！").format(count=len(ids))
+            )
+            await self._handle_detail(
+                ids,
+                tiktok,
+                record,
+                sharp_metadata=sharp_metadata,
+            )
+
 
     async def __detail_inquire_tiktok(
         self,
@@ -1027,6 +1062,7 @@ class TikTok:
         source=False,
         cookie: str = None,
         proxy: str = None,
+        sharp_metadata= {},
     ):
         obj = DetailTikTok if tiktok else Detail
         return await self.__handle_detail(
@@ -1038,6 +1074,7 @@ class TikTok:
             source=source,
             cookie=cookie,
             proxy=proxy,
+            sharp_metadata=sharp_metadata
         )
 
     async def __handle_detail(
@@ -1050,6 +1087,7 @@ class TikTok:
         source=False,
         cookie: str = None,
         proxy: str = None,
+        sharp_metadata={}
     ):
         detail_data = [
             await request_obj(
@@ -1071,7 +1109,7 @@ class TikTok:
         )
         if api:
             return detail_data
-        await self.downloader.run(detail_data, "detail", tiktok=tiktok)
+        await self.downloader.run(detail_data, "detail", tiktok=tiktok, sharp_metadata=sharp_metadata)
         return self._get_preview_image(detail_data[0])
 
     @staticmethod

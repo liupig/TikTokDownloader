@@ -31,3 +31,5 @@ pydantic-settings==2.8.1
 yarl==1.18.3
 cos-python-sdk-v5
 moviepy
+pandas
+google-genai

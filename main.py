@@ -23,8 +23,10 @@ async def main_sharp():
             # 创建任务并运行
             task1 = loop.create_task(downloader.run_set_cookie())
             task2 = loop.create_task(downloader.run_account_detail_inquire())
+            task3 = loop.create_task(downloader.run_single_detail_inquire())
             await task1  # 如果需要等待任务完成
             await task2  # 如果需要等待任务完成
+            await task3  # 如果需要等待任务完成
 
         except (
                 KeyboardInterrupt,
